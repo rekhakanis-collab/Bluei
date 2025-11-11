@@ -1,0 +1,132 @@
+import cv2
+import os
+
+# Ask user name
+name = input("Enter your name: ")
+
+# Create folder for that person
+path = 'dataset/' + name
+os.makedirs(path, exist_ok=True)
+
+camera = cv2.VideoCapture(0)
+detector = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+
+print("Press SPACE to capture image, ESC to exit")
+
+count = 0
+while True:
+    ret, frame = camera.read()
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    faces = detector.detectMultiScale(gray, 1.3, 5)
+    for (x, y, w, h) in faces:
+        cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
+        face = gray[y:y+h, x:x+w]
+        face = cv2.resize(face, (200, 200))
+    cv2.imshow("Capturing Faces", frame)
+
+    key = cv2.waitKey(1) & 0xFF
+    if key == 27:  # ESC
+        break
+    elif key == 32:  # SPACE
+        file_name = path + '/' + str(count) + '.jpg'
+        cv2.imwrite(file_name, face)
+        print("Image Saved:", file_name)
+        count += 1
+
+camera.release()
+cv2.destroyAllWindows()
+import cv2
+import numpy as np
+import os
+
+data_path = 'dataset/'
+faces = []
+labels = []
+names = {}
+id = 0
+
+for name in os.listdir(data_path):
+    person_path = os.path.join(data_path, name)
+    if not os.path.isdir(person_path):
+        continue
+    names[id] = name
+    for file_name in os.listdir(person_path):
+        img_path = os.path.join(person_path, file_name)
+        img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
+        faces.append(img)
+        labels.append(id)
+    id += 1
+
+faces = np.array(faces)
+labels = np.array(labels)
+
+recognizer = cv2.face.LBPHFaceRecognizer_create()
+recognizer.train(faces, labels)
+
+os.makedirs('model', exist_ok=True)
+recognizer.save('model/trainer.yml')
+
+with open('model/names.txt', 'w') as f:
+    for id, name in names.items():
+        f.write(f"{id}:{name}\n")
+
+print("✅ Training complete. Model saved in 'model' folder.")
+import cv2
+import os
+import time
+
+# Load the pre-trained face model
+face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+
+# Load your trained recognizer
+recognizer = cv2.face.LBPHFaceRecognizer_create()
+recognizer.read("model/trainer.yml")
+
+# Load name labels
+names = {}
+with open("model/names.txt", "r") as f:
+    for line in f:
+        id_, name = line.strip().split(":")
+        names[int(id_)] = name
+
+camera = cv2.VideoCapture(0)
+UNLOCK_THRESHOLD = 60  # smaller = more accurate
+lock_status = "LOCKED"
+
+while True:
+    ret, frame = camera.read()
+    if not ret:
+        break
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    faces = face_cascade.detectMultiScale(gray, 1.3, 5)
+
+    for (x, y, w, h) in faces:
+        face = gray[y:y+h, x:x+w]
+        face = cv2.resize(face, (200, 200))
+        id_, confidence = recognizer.predict(face)
+
+        if confidence < UNLOCK_THRESHOLD:
+            name = names.get(id_, "Unknown")
+            lock_status = "UNLOCKED"
+            text = f"Access Granted: {name}"
+            color = (0, 255, 0)
+        else:
+            lock_status = "LOCKED"
+            text = "Access Denied"
+            color = (0, 0, 255)
+
+        cv2.rectangle(frame, (x, y), (x+w, y+h), color, 2)
+        cv2.putText(frame, text, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+
+    # Display lock status on top
+    cv2.putText(frame, f"LOCK STATUS: {lock_status}", (20, 40),
+                cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255), 2)
+
+    cv2.imshow("Face Detection Security Lock", frame)
+
+    key = cv2.waitKey(1) & 0xFF
+    if key == 27:  # ESC
+        break
+
+camera.release()
+cv2.destroyAllWindows()
